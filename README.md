@@ -1,5 +1,3 @@
-# Название сценария
+# Обеспечение доступа к приложению в кластере Yandex Managed Service for Kubernetes®
 
-Описание сценария и инструкция по его применению.
-
-Для практических руководств обязательна ссылка на документацию.
+Вы можете предоставить доступ к приложению, запущенному в кластере [Managed Service for Kubernetes®](https://yandex.cloud/ru/docs/managed-kubernetes), с помощью публичных и внутренних сервисов различных типов. Подготовка инфраструктуры для Managed Service for Kubernetes® через Terraform описана в [практическом руководстве](https://cloud.yandex.ru/ru/docs/managed-kubernetes/operations/create-load-balancer), необходимый для настройки конфигурационный файл [k8s-load-balancer.tf](k8s-load-balancer.tf) расположен в этом репозитории.
