@@ -39,9 +39,9 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   network_id  = yandex_vpc_network.k8s-network.id
 
   ingress {
-    description       = "The rule allows availability checks from the load balancer's range of addresses. It is required for the operation of a fault-tolerant cluster and load balancer services."
+    description       = "The rule allows availability and health checks for the load balancer. Required for operation of a fault-tolerant cluster and the load balancer services."
     protocol          = "TCP"
-    predefined_target = ["198.18.235.0/24", "198.18.248.0/24"] # The load balancer's address range.
+    predefined_target = "loadbalancer_healthchecks"
     from_port         = 0
     to_port           = 65535
   }
@@ -55,28 +55,28 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   }
 
   ingress {
-    description    = "The rule allows the pod-pod and service-service interaction. Specify the subnets of your cluster and services."
+    description    = "The rule allows the pod-pod and service-service interaction"
     protocol       = "ANY"
-    v4_cidr_blocks = [local.zone_a_v4_cidr_blocks]
+    v4_cidr_blocks = ["0.0.0.0/0"]
     from_port      = 0
     to_port        = 65535
   }
 
   ingress {
-    description    = "The rule allows receipt of debugging ICMP packets from internal subnets"
-    protocol       = "ICMP"
-    v4_cidr_blocks = [local.zone_a_v4_cidr_blocks]
+    description    = "The rule allows receipt of debugging ICMPv6 packets"
+    protocol       = "IPV6_ICMP"
+    v4_cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    description    = "The rule allows connection to Kubernetes API on 6443 port from specified network"
+    description    = "The rule allows connection to Kubernetes API on port 6443"
     protocol       = "TCP"
     v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 6443
   }
 
   ingress {
-    description    = "The rule allows connection to Kubernetes API on 443 port from specified network"
+    description    = "The rule allows connection to Kubernetes API on port 443"
     protocol       = "TCP"
     v4_cidr_blocks = ["0.0.0.0/0"]
     port           = 443
