@@ -14,6 +14,8 @@ locals {
   network_name              = "k8s-network" # Name of the network
   subnet_name               = "subnet-a" # Name of the subnet
   zone_a_v4_cidr_blocks     = "10.1.0.0/16" # CIDR block for the subnet in the ru-central1-a availability zone
+  master_v4_cidr_blocks     = "10.2.0.0/16" # CIDR block for the cluster
+  node_v4_cidr_blocks       = "10.3.0.0/16" # CIDR block for the cluster node group
   main_security_group_name  = "k8s-main-sg" # Name of the main security group of the cluster
   public_services_sg_name   = "k8s-public-services" # Name of the public services security group for node groups
   k8s_cluster_name          = "k8s-cluster" # Name of the Kubernetes cluster
@@ -39,9 +41,9 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   network_id  = yandex_vpc_network.k8s-network.id
 
   ingress {
-    description       = "The rule allows availability checks from the load balancer's range of addresses. It is required for the operation of a fault-tolerant cluster and load balancer services."
+    description       = "The rule allows availability checks from a range of load balancer addresses. It is required for operation of a fault-tolerant cluster and load balancer services."
     protocol          = "TCP"
-    predefined_target = ["198.18.235.0/24", "198.18.248.0/24"] # The load balancer's address range.
+    predefined_target = "loadbalancer_healthchecks"
     from_port         = 0
     to_port           = 65535
   }
@@ -55,39 +57,31 @@ resource "yandex_vpc_security_group" "k8s-main-sg" {
   }
 
   ingress {
-    description    = "The rule allows the pod-pod and service-service interaction. Specify the subnets of your cluster and services."
-    protocol       = "ANY"
-    v4_cidr_blocks = [local.zone_a_v4_cidr_blocks]
-    from_port      = 0
-    to_port        = 65535
-  }
-
-  ingress {
     description    = "The rule allows receipt of debugging ICMP packets from internal subnets"
     protocol       = "ICMP"
-    v4_cidr_blocks = [local.zone_a_v4_cidr_blocks]
+    v4_cidr_blocks = ["10.0.0.0/8"]
   }
 
   ingress {
-    description    = "The rule allows connection to Kubernetes API on 6443 port from specified network"
-    protocol       = "TCP"
-    v4_cidr_blocks = ["0.0.0.0/0"]
-    port           = 6443
+    description       = "The rule allows access to Kubernetes API, kubectl, and other utilities"
+    protocol          = "TCP"
+    v4_cidr_blocks    = ["0.0.0.0/0"]
+    port              = 443
   }
 
   ingress {
-    description    = "The rule allows connection to Kubernetes API on 443 port from specified network"
-    protocol       = "TCP"
-    v4_cidr_blocks = ["0.0.0.0/0"]
-    port           = 443
+    description       = "The rule allows access to Kubernetes API, kubectl, and other utilities"
+    protocol          = "TCP"
+    v4_cidr_blocks    = ["0.0.0.0/0"]
+    port              = 6443
   }
 
   egress {
-    description    = "The rule allows all outgoing traffic. Nodes can connect to Yandex Container Registry, Object Storage, Docker Hub, and more."
-    protocol       = "ANY"
-    v4_cidr_blocks = ["0.0.0.0/0"]
-    from_port      = 0
-    to_port        = 65535
+    description       = "The rule allows all outgoing traffic between a master and nodes"
+    protocol          = "ANY"
+    predefined_target = "self_security_group"
+    from_port         = 0
+    to_port           = 65535
   }
 }
 
@@ -97,11 +91,27 @@ resource "yandex_vpc_security_group" "k8s-public-services" {
   network_id  = yandex_vpc_network.k8s-network.id
 
   ingress {
+    description    = "The rule allows the pod-pod and service-service interaction. Specify the subnets of your cluster and services."
+    protocol       = "ANY"
+    v4_cidr_blocks = [local.master_v4_cidr_blocks,local.node_v4_cidr_blocks]
+    from_port      = 0
+    to_port        = 65535
+  }
+
+  ingress {
     description    = "The rule allows incoming traffic from the internet to the NodePort port range. Add ports or change existing ones to the required ports."
     protocol       = "TCP"
     v4_cidr_blocks = ["0.0.0.0/0"]
     from_port      = 30000
     to_port        = 32767
+  }
+
+  egress {
+    description    = "The rule allows all outgoing traffic. Nodes can connect to Yandex Container Registry, Object Storage, Docker Hub, and more."
+    protocol       = "ANY"
+    v4_cidr_blocks = ["0.0.0.0/0"]
+    from_port      = 0
+    to_port        = 65535
   }
 }
 
@@ -129,9 +139,11 @@ resource "yandex_resourcemanager_folder_iam_binding" "images-puller" {
 }
 
 resource "yandex_kubernetes_cluster" "k8s-cluster" {
-  description = "Managed Service for Kubernetes cluster"
-  name        = local.k8s_cluster_name
-  network_id  = yandex_vpc_network.k8s-network.id
+  description        = "Managed Service for Kubernetes cluster"
+  name               = local.k8s_cluster_name
+  network_id         = yandex_vpc_network.k8s-network.id
+  cluster_ipv4_range = local.master_v4_cidr_blocks
+  service_ipv4_range = local.node_v4_cidr_blocks
 
   master {
     version = local.k8s_version
@@ -176,7 +188,7 @@ resource "yandex_kubernetes_node_group" "k8s-node-group" {
     network_interface {
       nat                = true
       subnet_ids         = [yandex_vpc_subnet.subnet-a.id]
-      security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id]
+      security_group_ids = [yandex_vpc_security_group.k8s-main-sg.id,yandex_vpc_security_group.k8s-public-services.id]
     }
 
     resources {
